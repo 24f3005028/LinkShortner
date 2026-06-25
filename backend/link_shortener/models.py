@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.link_shortener.database import Base
+from link_shortener.database import Base
 
 
 def utc_now() -> datetime:

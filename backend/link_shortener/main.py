@@ -6,10 +6,10 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, s
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from backend.link_shortener.config import get_settings
-from backend.link_shortener.database import get_db, init_db
-from backend.link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks
-from backend.link_shortener.services import (
+from link_shortener.config import get_settings
+from link_shortener.database import get_db, init_db
+from link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks
+from link_shortener.services import (
     LinkExpiredError,
     LinkNotFoundError,
     ShortCodeConflictError,

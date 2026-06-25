@@ -6,8 +6,8 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.link_shortener.config import Settings, get_settings
-from backend.link_shortener.models import Link
+from link_shortener.config import Settings, get_settings
+from link_shortener.models import Link
 
 BASE58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
 

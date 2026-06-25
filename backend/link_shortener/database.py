@@ -3,7 +3,7 @@ from collections.abc import Generator
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from backend.link_shortener.config import get_settings
+from link_shortener.config import get_settings
 
 
 class Base(DeclarativeBase):
@@ -29,7 +29,7 @@ def get_session_local() -> sessionmaker[Session]:
 
 
 def init_db() -> None:
-    from backend.link_shortener import models  # noqa: F401
+    from link_shortener import models  # noqa: F401
 
     Base.metadata.create_all(bind=get_engine())
 
