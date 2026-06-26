@@ -1,3 +1,5 @@
+// src/lib/api.ts
+import axios from "axios";
 import type {
   CreateLinkPayload,
   HealthResponse,
@@ -6,31 +8,42 @@ import type {
   PaginatedLinks,
 } from "./types";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+// Prefer env var, fall back to local dev URL.
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
-async function handleJsonResponse<T>(response: Response): Promise<T> {
-  if (!response.ok) {
-    let message = `Request failed with status ${response.status}`;
+// Preconfigured Axios instance for this backend.
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    Accept: "application/json",
+  },
+});
 
-    try {
-      const data = (await response.json()) as { detail?: unknown };
-      if (typeof data.detail === "string") {
-        message = data.detail;
+// Shared error handler that mimics your fetch version.
+function handleAxiosError(error: unknown): never {
+  // If this is an AxiosError, inspect the response
+  if (axios.isAxiosError(error)) {
+    const res = error.response;
+    let message = `Request failed with status ${res?.status ?? "unknown"}`;
+
+    if (res?.data && typeof res.data === "object" && "detail" in res.data) {
+      const detail = (res.data as { detail?: unknown }).detail;
+      if (typeof detail === "string") {
+        message = detail;
       }
-    } catch {
-      // Keep the default message when the backend does not return JSON.
     }
 
     throw new Error(message);
   }
 
-  return (await response.json()) as T;
+  // Non-Axios error
+  throw new Error("Request failed");
 }
 
-function buildAuthHeaders(token?: string): HeadersInit {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-  };
+// Helper to build headers including optional Bearer token
+function buildAuthHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
@@ -39,59 +52,77 @@ function buildAuthHeaders(token?: string): HeadersInit {
   return headers;
 }
 
+// GET /health
 export async function healthCheck(): Promise<HealthResponse> {
-  const response = await fetch(`${API_BASE_URL}/health`, {
-    method: "GET",
-    headers: buildAuthHeaders(),
-  });
-
-  return handleJsonResponse<HealthResponse>(response);
+  try {
+    const response = await api.get<HealthResponse>("/health", {
+      headers: buildAuthHeaders(),
+    });
+    return response.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
 }
 
+// POST /links
 export async function createShortLink(
   payload: CreateLinkPayload,
   token?: string,
 ): Promise<LinkRead> {
-  const response = await fetch(`${API_BASE_URL}/links`, {
-    method: "POST",
-    headers: {
-      ...buildAuthHeaders(token),
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      url: payload.url,
-      custom_code: payload.customCode ?? null,
-      expires_at: payload.expiresAt ?? null,
-    }),
-  });
-
-  return handleJsonResponse<LinkRead>(response);
+  try {
+    const response = await api.post<LinkRead>(
+      "/links",
+      {
+        url: payload.url,
+        custom_code: payload.customCode ?? null,
+        expires_at: payload.expiresAt ?? null,
+      },
+      {
+        headers: {
+          ...buildAuthHeaders(token),
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    return response.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
 }
 
+// GET /links?page=&page_size=
 export async function listShortLinks(
   options?: { page?: number; pageSize?: number },
   token?: string,
 ): Promise<PaginatedLinks> {
   const page = options?.page ?? 1;
   const pageSize = options?.pageSize ?? 20;
-  const params = new URLSearchParams({
-    page: String(page),
-    page_size: String(pageSize),
-  });
 
-  const response = await fetch(`${API_BASE_URL}/links?${params.toString()}`, {
-    method: "GET",
-    headers: buildAuthHeaders(token),
-  });
-
-  return handleJsonResponse<PaginatedLinks>(response);
+  try {
+    const response = await api.get<PaginatedLinks>("/links", {
+      params: {
+        page,
+        page_size: pageSize,
+      },
+      headers: buildAuthHeaders(token),
+    });
+    return response.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
 }
 
-export async function getLinkStats(code: string, token?: string): Promise<LinkStats> {
-  const response = await fetch(`${API_BASE_URL}/links/${encodeURIComponent(code)}/stats`, {
-    method: "GET",
-    headers: buildAuthHeaders(token),
-  });
-
-  return handleJsonResponse<LinkStats>(response);
+// GET /links/{code}/stats
+export async function getLinkStats(
+  code: string,
+  token?: string,
+): Promise<LinkStats> {
+  try {
+    const response = await api.get<LinkStats>(`/links/${encodeURIComponent(code)}/stats`, {
+      headers: buildAuthHeaders(token),
+    });
+    return response.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
 }
