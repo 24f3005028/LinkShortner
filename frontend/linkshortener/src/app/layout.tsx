@@ -8,14 +8,14 @@ const geistSans = Geist({ subsets: ["latin"], variable: "--font-geist-sans" });
 const geistMono = Geist_Mono({ subsets: ["latin"], variable: "--font-geist-mono" });
 
 export const metadata: Metadata = {
-  title: "Snip - Link Shortener",
+  title: "Shawty - Link Shortener",
   description: "Shorten any URL in seconds.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider afterSignOutUrl="/">
-      <html lang="en" suppressHydrationWarning>
+      <html lang="en">
         <body className={`${geistSans.variable} ${geistMono.variable} bg-background text-foreground antialiased`}>
           <ThemeProvider>{children}</ThemeProvider>
         </body>
