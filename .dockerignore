@@ -1,8 +1,10 @@
 venv/
 .venv/
-__pycache__/
+.git/
 .pytest_cache/
+__pycache__/
 *.py[cod]
 *.db
-linkshortener.db
+*.db-journal
+data/
 .env
