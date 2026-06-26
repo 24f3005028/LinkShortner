@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from link_shortener.auth import get_current_user_id
 from link_shortener.database import Base, get_db
 from link_shortener.main import app
 
@@ -25,7 +26,11 @@ def client():
         finally:
             db.close()
 
+    def override_get_current_user_id():
+        return "user_test"
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user_id] = override_get_current_user_id
     # lifespan=False skips init_db() so no Coolify connection during tests
     test_client = TestClient(app, raise_server_exceptions=True)
     yield test_client

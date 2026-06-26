@@ -3,10 +3,13 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from link_shortener.config import get_settings
+from link_shortener.auth import get_current_user_id
+from link_shortener.models import Link
 from link_shortener.database import get_db, init_db
 from link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks
 from link_shortener.services import (
@@ -33,6 +36,16 @@ app = FastAPI(
     version="1.0.0",
     description="A small FastAPI link-shortener service with PostgreSQL persistence.",
     lifespan=lifespan,
+)
+
+settings = get_settings()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allowed_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -64,6 +77,7 @@ def create_short_link(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ) -> LinkRead:
     expires_at = payload.expires_at
     if expires_at is not None:
@@ -76,6 +90,7 @@ def create_short_link(
             original_url=str(payload.url),
             custom_code=payload.custom_code,
             expires_at=payload.expires_at,
+            owner_id=user_id,
         )
     except ShortCodeConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -94,24 +109,26 @@ def list_short_links(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
 ) -> PaginatedLinks:
-    links = list_links(db, page=page, page_size=page_size)
+    links = list_links(db, page=page, page_size=page_size, owner_id=user_id)
     return PaginatedLinks(
         items=[_build_link_read(request, link) for link in links],
-        total=count_links(db),
+        total=count_links(db, owner_id=user_id),
         page=page,
         page_size=page_size,
     )
 
 
 @app.get("/links/{code}/stats", response_model=LinkStats, tags=["links"])
-def link_stats(code: str, db: Session = Depends(get_db)) -> LinkStats:
-    try:
-        link = get_active_link(db, code)
-    except LinkNotFoundError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found.") from exc
-    except LinkExpiredError as exc:
-        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link has expired.") from exc
+def link_stats(code: str, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> LinkStats:
+    link = db.query(Link).filter(Link.code == code, Link.owner_id == user_id).first()
+
+    if link is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found.")
+
+    if link.is_expired:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link has expired.")
 
     return LinkStats.model_validate(link)
 

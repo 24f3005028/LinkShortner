@@ -64,6 +64,30 @@ def test_paginated_list(client):
     assert len(body["items"]) == 2
 
 
+def test_links_are_scoped_to_owner(client):
+    created = client.post("/links", json={"url": "https://example.com/owned"}).json()
+
+    app = client.app
+
+    def override_other_user():
+        return "user_other"
+
+    from link_shortener.auth import get_current_user_id
+
+    app.dependency_overrides[get_current_user_id] = override_other_user
+
+    try:
+        response = client.get("/links")
+
+        assert response.status_code == 200
+        assert response.json()["total"] == 0
+
+        stats = client.get(f"/links/{created['code']}/stats")
+        assert stats.status_code == 404
+    finally:
+        app.dependency_overrides[get_current_user_id] = lambda: "user_test"
+
+
 def test_past_expiry_is_rejected(client):
     past_expiry = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
 
