@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "20260626_01_add_owner_id_to_links"
+revision = "20260626_01_owner_id_to_links"
 down_revision = None
 branch_labels = None
 depends_on = None
