@@ -8,6 +8,7 @@ import { Link2, Sun, Moon, LayoutDashboard } from "lucide-react";
 
 function ModeSwitcher() {
   const { setTheme, resolvedTheme } = useTheme();
+
   return (
     <Button
       variant="ghost"
@@ -25,11 +26,13 @@ function ModeSwitcher() {
 export default function Navbar() {
   return (
     <>
-      {/* Signed In State */}
       <Show when="signed-in" fallback={null}>
         <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
           <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-5 px-6">
-            <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight text-foreground/90 transition-colors hover:text-foreground">
+            <Link
+              href="/"
+              className="flex items-center gap-2 font-semibold tracking-tight text-foreground/90 transition-colors hover:text-foreground"
+            >
               <Link2 size={18} className="text-primary" />
               <span>Shawty</span>
             </Link>
@@ -37,7 +40,6 @@ export default function Navbar() {
             <div className="flex items-center gap-3">
               <div className="inline-flex h-11 items-center justify-center rounded-xl border border-border/60 bg-muted/30 px-3">
                 <UserButton>
-                  {/* Injects the custom Dashboard item inside Clerk's user profile menu */}
                   <UserButton.MenuItems>
                     <UserButton.Link
                       label="Dashboard"
@@ -53,11 +55,13 @@ export default function Navbar() {
         </header>
       </Show>
 
-      {/* Signed Out State */}
       <Show when="signed-out" fallback={null}>
         <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
           <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-5 px-6">
-            <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight text-foreground/90 transition-colors hover:text-foreground">
+            <Link
+              href="/"
+              className="flex items-center gap-2 font-semibold tracking-tight text-foreground/90 transition-colors hover:text-foreground"
+            >
               <Link2 size={18} className="text-primary" />
               <span>Shawty</span>
             </Link>

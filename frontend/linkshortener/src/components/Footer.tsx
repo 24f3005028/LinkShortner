@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Link2, ArrowUpRight } from "lucide-react";
+import {  ArrowUpRight } from "lucide-react";
 import { SiGithub } from "react-icons/si";
 
 const footerLinks = [
