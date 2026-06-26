@@ -341,8 +341,7 @@ export default function Home() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-background text-foreground">
-      <Navbar />
-
+   
       <main className="flex-1 w-full">
         {/* ── Hero ───────────────────────────────────────────── */}
         <section className="mx-auto max-w-3xl px-6 pt-28 pb-20 flex flex-col items-center text-center">
