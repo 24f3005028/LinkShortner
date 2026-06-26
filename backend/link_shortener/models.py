@@ -19,6 +19,7 @@ class Link(Base):
     click_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    owner_id: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
 
     @property
     def is_expired(self) -> bool:

@@ -52,30 +52,38 @@ def create_link(
     original_url: str,
     custom_code: str | None = None,
     expires_at: datetime | None = None,
+    owner_id: str,
     settings: Settings | None = None,
 ) -> LinkCreateResult:
     settings = settings or get_settings()
-    existing = db.scalar(select(Link).where(Link.original_url == original_url))
+    existing = db.scalar(select(Link).where(Link.original_url == original_url, Link.owner_id == owner_id))
     if existing is not None:
         return LinkCreateResult(link=existing, created=False)
 
     if custom_code:
         if db.scalar(select(Link).where(Link.code == custom_code)) is not None:
             raise ShortCodeConflictError("Short code is already in use.")
-        return _persist_link(db, code=custom_code, original_url=original_url, expires_at=expires_at)
+        return _persist_link(db, code=custom_code, original_url=original_url, expires_at=expires_at, owner_id=owner_id)
 
     for _ in range(settings.max_code_generation_attempts):
         code = generate_short_code(settings.short_code_length)
         try:
-            return _persist_link(db, code=code, original_url=original_url, expires_at=expires_at)
+            return _persist_link(db, code=code, original_url=original_url, expires_at=expires_at, owner_id=owner_id)
         except ShortCodeConflictError:
             continue
 
     raise ShortCodeGenerationError("Could not allocate a unique short code.")
 
 
-def _persist_link(db: Session, *, code: str, original_url: str, expires_at: datetime | None) -> LinkCreateResult:
-    link = Link(code=code, original_url=original_url, expires_at=_as_utc(expires_at))
+def _persist_link(
+    db: Session,
+    *,
+    code: str,
+    original_url: str,
+    expires_at: datetime | None,
+    owner_id: str,
+) -> LinkCreateResult:
+    link = Link(code=code, original_url=original_url, expires_at=_as_utc(expires_at), owner_id=owner_id)
     db.add(link)
     try:
         db.commit()
@@ -103,15 +111,16 @@ def record_click(db: Session, link: Link) -> Link:
     return link
 
 
-def count_links(db: Session) -> int:
-    return db.scalar(select(func.count()).select_from(Link)) or 0
+def count_links(db: Session, *, owner_id: str) -> int:
+    return db.scalar(select(func.count()).select_from(Link).where(Link.owner_id == owner_id)) or 0
 
 
-def list_links(db: Session, *, page: int, page_size: int) -> list[Link]:
+def list_links(db: Session, *, page: int, page_size: int, owner_id: str) -> list[Link]:
     offset = (page - 1) * page_size
     return list(
         db.scalars(
             select(Link)
+            .where(Link.owner_id == owner_id)
             .order_by(Link.created_at.desc(), Link.id.desc())
             .offset(offset)
             .limit(page_size)
