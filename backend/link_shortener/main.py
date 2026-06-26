@@ -8,7 +8,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from link_shortener.config import get_settings
-from link_shortener.auth import get_current_user_id
+from link_shortener.auth import get_current_user_id, get_current_user_id_optional
 from link_shortener.models import Link
 from link_shortener.database import get_db, init_db
 from link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks
@@ -77,7 +77,7 @@ def create_short_link(
     request: Request,
     response: Response,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user_id),
+    user_id: str | None = Depends(get_current_user_id_optional),
 ) -> LinkRead:
     expires_at = payload.expires_at
     if expires_at is not None:
@@ -90,7 +90,7 @@ def create_short_link(
             original_url=str(payload.url),
             custom_code=payload.custom_code,
             expires_at=payload.expires_at,
-            owner_id=user_id,
+            owner_id=user_id,  # None for anonymous
         )
     except ShortCodeConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

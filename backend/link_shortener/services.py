@@ -52,7 +52,7 @@ def create_link(
     original_url: str,
     custom_code: str | None = None,
     expires_at: datetime | None = None,
-    owner_id: str,
+    owner_id: str | None = None,
     settings: Settings | None = None,
 ) -> LinkCreateResult:
     settings = settings or get_settings()
@@ -81,7 +81,7 @@ def _persist_link(
     code: str,
     original_url: str,
     expires_at: datetime | None,
-    owner_id: str,
+    owner_id: str | None,
 ) -> LinkCreateResult:
     link = Link(code=code, original_url=original_url, expires_at=_as_utc(expires_at), owner_id=owner_id)
     db.add(link)

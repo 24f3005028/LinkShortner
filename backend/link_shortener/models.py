@@ -15,7 +15,7 @@ class Link(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     code: Mapped[str] = mapped_column(String(32), unique=True, index=True, nullable=False)
-    original_url: Mapped[str] = mapped_column(Text, unique=True, index=True, nullable=False)
+    original_url: Mapped[str] = mapped_column(Text, index=True, nullable=False)
     click_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
