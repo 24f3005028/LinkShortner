@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
-import { createShortLink } from "@/lib/api";
+import { Copy, ExternalLink } from "lucide-react";
+import { createShortLink, listShortLinks } from "@/lib/api";
 import { deleteLocalLink, getLocalLinks, saveLocalLink } from "@/lib/localLinks";
 import type { LinkRead } from "@/lib/types";
 
@@ -212,6 +214,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [localLinks, setLocalLinks] = useState<LinkRead[]>([]);
   const [localLoading, setLocalLoading] = useState(true);
+  const [recentLinks, setRecentLinks] = useState<LinkRead[]>([]);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -238,6 +242,33 @@ export default function Home() {
     }
     load();
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadRecentLinks() {
+      if (!isSignedIn) {
+        if (active) {
+          setRecentLinks([]);
+        }
+        return;
+      }
+
+      try {
+        const token = await getToken();
+        const data = await listShortLinks({ page: 1, pageSize: 5 }, token ?? undefined);
+        if (active) {
+          setRecentLinks(data.items);
+        }
+      } catch {
+        // Silent failure on home page.
+      }
+    }
+
+    loadRecentLinks();
+    return () => {
+      active = false;
+    };
+  }, [getToken, isSignedIn]);
 
   // --- Shorten handler ---
   async function handleShorten() {
@@ -268,6 +299,7 @@ export default function Home() {
         const token = await getToken();
         const result = await createShortLink({ url: normalizedUrl }, token ?? undefined);
         setShortUrl(result.short_url);
+        setRecentLinks((prev) => [result, ...prev].slice(0, 5));
         addToast("Short link created!", "success");
       } else {
         const result = await createShortLink({ url: normalizedUrl });
@@ -293,9 +325,13 @@ export default function Home() {
     addToast("Link removed.", "info");
   }
 
-  async function handleCopyLocalLink(shortUrl: string) {
+  async function handleCopyRecentLink(shortUrl: string, code: string) {
     const ok = await copyToClipboard(shortUrl);
-    if (ok) addToast("Copied to clipboard!", "success");
+    if (!ok) {
+      return;
+    }
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 1800);
   }
 
   // --- Enter key support ---
@@ -409,6 +445,67 @@ export default function Home() {
               </span>
             ))}
           </div>
+
+          {isSignedIn && recentLinks.length > 0 ? (
+            <div className="mt-12 w-full max-w-xl text-left">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Your recent links</h2>
+                <Link href="/dashboard" className="text-xs text-primary hover:underline">
+                  View all →
+                </Link>
+              </div>
+
+              <ul className="space-y-2">
+                {recentLinks.map((link) => (
+                  <li
+                    key={link.code}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-sm"
+                  >
+                    <div className="min-w-0 flex flex-col gap-0.5">
+                      <a
+                        href={link.short_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="truncate font-medium text-primary hover:underline"
+                      >
+                        {link.short_url}
+                      </a>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {link.original_url.length > 50
+                          ? `${link.original_url.slice(0, 50)}…`
+                          : link.original_url}
+                      </span>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1.5">
+                      <span className="tabular-nums text-xs text-muted-foreground">{link.click_count} clicks</span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyRecentLink(link.short_url, link.code)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+                        aria-label="Copy"
+                      >
+                        {copiedCode === link.code ? (
+                          <span className="text-xs text-primary">✓</span>
+                        ) : (
+                          <Copy className="size-3.5" />
+                        )}
+                      </button>
+                      <a
+                        href={link.short_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
+                        aria-label="Open"
+                      >
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </section>
 
         {/* ── Local links table (guests only) ───────────────── */}
@@ -470,7 +567,7 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {localLinks.map((link, index) => (
+                      {localLinks.map((link) => (
                         <tr
                           key={link.code}
                           className={[

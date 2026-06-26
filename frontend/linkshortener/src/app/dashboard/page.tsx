@@ -118,6 +118,24 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [primaryColor, setPrimaryColor] = useState("#22c55e");
+  const [borderColor, setBorderColor] = useState("#e2e8f0");
+  const [bgColor, setBgColor] = useState("#ffffff");
+
+  useEffect(() => {
+    const style = getComputedStyle(document.documentElement);
+    const primary = style.getPropertyValue("--primary").trim();
+    const border = style.getPropertyValue("--border").trim();
+    const background = style.getPropertyValue("--background").trim();
+
+    function applyColors() {
+      if (primary) setPrimaryColor(`hsl(${primary})`);
+      if (border) setBorderColor(`hsl(${border})`);
+      if (background) setBgColor(`hsl(${background})`);
+    }
+
+    applyColors();
+  }, []);
 
   useEffect(() => {
     async function fetchLinks() {
@@ -277,24 +295,24 @@ export default function DashboardPage() {
                       <AreaChart data={creationTrend}>
                         <defs>
                           <linearGradient id="fillLinks" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.04} />
+                            <stop offset="5%" stopColor={primaryColor} stopOpacity={0.35} />
+                            <stop offset="95%" stopColor={primaryColor} stopOpacity={0.04} />
                           </linearGradient>
                         </defs>
-                        <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.35} />
+                        <CartesianGrid vertical={false} stroke={borderColor} strokeOpacity={0.35} />
                         <XAxis dataKey="date" tickLine={false} axisLine={false} fontSize={12} />
                         <YAxis allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
                         <Tooltip
                           contentStyle={{
                             borderRadius: "14px",
-                            border: "1px solid hsl(var(--border))",
-                            background: "hsl(var(--background))",
+                            border: `1px solid ${borderColor}`,
+                            background: bgColor,
                           }}
                         />
                         <Area
                           type="monotone"
                           dataKey="count"
-                          stroke="hsl(var(--primary))"
+                          stroke={primaryColor}
                           strokeWidth={2.5}
                           fill="url(#fillLinks)"
                         />
@@ -324,7 +342,7 @@ export default function DashboardPage() {
                         layout="vertical"
                         margin={{ left: 4, right: 4, top: 4, bottom: 4 }}
                       >
-                        <CartesianGrid horizontal={true} vertical={false} stroke="hsl(var(--border))" strokeOpacity={0.35} />
+                        <CartesianGrid horizontal={true} vertical={false} stroke={borderColor} strokeOpacity={0.35} />
                         <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
                         <YAxis
                           type="category"
@@ -337,13 +355,13 @@ export default function DashboardPage() {
                         <Tooltip
                           contentStyle={{
                             borderRadius: "14px",
-                            border: "1px solid hsl(var(--border))",
-                            background: "hsl(var(--background))",
+                            border: `1px solid ${borderColor}`,
+                            background: bgColor,
                           }}
                         />
                         <Bar dataKey="clicks" radius={[0, 10, 10, 0]}>
                           {topLinks.map((link) => (
-                            <Cell key={link.code} fill="hsl(var(--primary))" fillOpacity={0.85} />
+                            <Cell key={link.code} fill={primaryColor} fillOpacity={0.85} />
                           ))}
                         </Bar>
                       </BarChart>
@@ -420,7 +438,11 @@ export default function DashboardPage() {
                                 aria-label="Copy short URL"
                                 title="Copy short URL"
                               >
-                                <Copy className="size-4" />
+                                {copiedCode === link.code ? (
+                                  <span className="text-xs text-primary">✓</span>
+                                ) : (
+                                  <Copy className="size-4" />
+                                )}
                               </button>
 
                               <a
@@ -434,10 +456,6 @@ export default function DashboardPage() {
                                 <ExternalLink className="size-4" />
                               </a>
                             </div>
-
-                            {copiedCode === link.code ? (
-                              <p className="mt-2 text-right text-xs text-primary">Copied</p>
-                            ) : null}
                           </td>
                         </tr>
                       ))}
