@@ -106,11 +106,6 @@ def custom_openapi():
         "description": "Paste your Clerk session JWT here.",
     }
 
-    for path_item in schema.get("paths", {}).values():
-        for operation in path_item.values():
-            if isinstance(operation, dict) and any(tag in {"links", "auth"} for tag in operation.get("tags", [])):
-                operation["security"] = [{"BearerAuth": []}]
-
     app.openapi_schema = schema
     return schema
 

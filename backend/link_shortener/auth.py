@@ -7,7 +7,11 @@ from clerk_backend_api.security.types import AuthErrorReason
 from link_shortener.config import Settings, get_settings
 
 
-bearer_scheme = HTTPBearer(auto_error=False)
+bearer_scheme = HTTPBearer(
+    auto_error=False,
+    scheme_name="BearerAuth",
+    description="Paste your Clerk session JWT here.",
+)
 
 
 def _authenticate_request(request: Request, settings: Settings):
@@ -28,6 +32,7 @@ def _authenticate_request(request: Request, settings: Settings):
 def get_current_user_id(
     request: Request,
     settings: Settings = Depends(get_settings),
+    _credentials: any = Depends(bearer_scheme),
 ) -> str:
     """Required auth: raises 401 if no valid token."""
     state = _authenticate_request(request, settings)
@@ -58,6 +63,7 @@ def get_current_user_id(
 def get_current_user_id_optional(
     request: Request,
     settings: Settings = Depends(get_settings),
+    _credentials: any = Depends(bearer_scheme),
 ) -> str | None:
     """Optional auth: returns user_id if valid token, None if no token, raises 401 for invalid token."""
     state = _authenticate_request(request, settings)

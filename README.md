@@ -22,7 +22,6 @@ The backend is a FastAPI + PostgreSQL REST API; the frontend is a Next.js 15 app
 | Guest mode | Anonymous users can shorten links without signing in |
 | Rate limiting | Per-IP / per-user throttle on creation, redirects, and unlock |
 | OpenAPI docs | Auto-generated Swagger UI at `/docs` |
-| Docker Compose | One-command local stack with Postgres |
 
 ---
 
@@ -37,7 +36,7 @@ The backend is a FastAPI + PostgreSQL REST API; the frontend is a Next.js 15 app
 - [slowapi](https://slowapi.readthedocs.io/) + [limits](https://limits.readthedocs.io/) for rate limiting
 - [pytest](https://pytest.org/) + [httpx](https://www.python-httpx.org/) for endpoint testing
 - [Gunicorn](https://gunicorn.org/) + Uvicorn workers for production
-- Docker + Docker Compose for containerisation
+- Docker for containerisation
 
 **Frontend**
 - [Next.js 15](https://nextjs.org/) (App Router, TypeScript)
@@ -82,7 +81,7 @@ The backend is a FastAPI + PostgreSQL REST API; the frontend is a Next.js 15 app
 ### Prerequisites
 
 - Python 3.11+
-- A running PostgreSQL instance (or use Docker Compose — see below)
+- A running PostgreSQL instance
 
 ### Steps
 
@@ -115,25 +114,19 @@ API available at **http://127.0.0.1:8000**. Swagger UI at **http://127.0.0.1:800
 
 ---
 
-## Running with Docker Compose (recommended)
-
-This starts the API **and** a Postgres database in one command — no local Postgres required.
+## Running the Backend with Docker
 
 ```bash
-# 1. Copy the env template and fill in your Clerk keys (optional if running without auth)
-cp .env.example .env
+cd backend
 
-# 2. Build and start both services
-docker compose up --build
+docker build -t shawty-api .
+
+docker run --rm -p 8000:8000 \
+  -e LINK_SHORTENER_DATABASE_URL="postgresql+psycopg://postgres:postgres@host.docker.internal:5432/link_shortener" \
+  shawty-api
 ```
 
-The API is now at **http://localhost:8000** and Swagger at **http://localhost:8000/docs**.
-
-Postgres data is persisted in the `pgdata` named volume — it survives `docker compose down`.
-To wipe and start fresh: `docker compose down -v`.
-
-**Service health:** The `api` service waits for Postgres to pass its healthcheck before starting,
-so you never hit a "connection refused" race condition on first boot.
+> **Windows PowerShell** — replace `\` with `` ` `` for line continuation, or put everything on one line.
 
 ---
 
@@ -320,6 +313,3 @@ Roughly **4–5 hours** spread across implementation (backend API + auth, passwo
 | `LINK_SHORTENER_RATE_LIMIT_CREATE` | Optional | `10/minute` | Rate limit for `POST /links` |
 | `LINK_SHORTENER_RATE_LIMIT_REDIRECT` | Optional | `60/minute` | Rate limit for `GET /{code}` |
 | `LINK_SHORTENER_RATE_LIMIT_UNLOCK` | Optional | `5/minute` | Rate limit for `POST /{code}/unlock` |
-| `POSTGRES_USER` | Docker Compose | `shawty` | Postgres username (compose only) |
-| `POSTGRES_PASSWORD` | Docker Compose | `shawtypass` | Postgres password (compose only) |
-| `POSTGRES_DB` | Docker Compose | `link_shortener` | Postgres database name (compose only) |
