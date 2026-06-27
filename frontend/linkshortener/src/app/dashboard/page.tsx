@@ -4,16 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Show, SignInButton, useAuth } from "@clerk/nextjs";
 import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
-import {
-  ChartNoAxesCombined,
   Copy,
   ExternalLink,
   Link2,
@@ -134,24 +124,8 @@ function DashboardContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
-  const [primaryColor, setPrimaryColor] = useState("#22c55e");
-  const [borderColor, setBorderColor] = useState("#e2e8f0");
-  const [bgColor, setBgColor] = useState("#ffffff");
 
-  useEffect(() => {
-    const style = getComputedStyle(document.documentElement);
-    const primary = style.getPropertyValue("--primary").trim();
-    const border = style.getPropertyValue("--border").trim();
-    const background = style.getPropertyValue("--background").trim();
 
-    function applyColors() {
-      if (primary) setPrimaryColor(`hsl(${primary})`);
-      if (border) setBorderColor(`hsl(${border})`);
-      if (background) setBgColor(`hsl(${background})`);
-    }
-
-    applyColors();
-  }, []);
 
   useEffect(() => {
     async function fetchLinks() {
@@ -178,19 +152,7 @@ function DashboardContent() {
     return { totalLinks, totalClicks, avgClicks };
   }, [links]);
 
-  const creationTrend = useMemo(() => {
-    const map = new Map<string, number>();
-
-    links.forEach((link) => {
-      const key = new Date(link.created_at).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-      });
-      map.set(key, (map.get(key) ?? 0) + 1);
-    });
-
-    return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
-  }, [links]);
+  
 
   async function handleCopy(shortUrl: string, code: string) {
     try {
@@ -251,89 +213,7 @@ function DashboardContent() {
         </div>
       </section>
 
-      <section className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
-        <div className="rounded-2xl border border-border/50 bg-muted/30 p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold tracking-tight">Click activity</h2>
-              <p className="text-xs text-muted-foreground">Engagement overview across your links</p>
-            </div>
-            <ChartNoAxesCombined className="size-4 text-muted-foreground" />
-          </div>
-
-          <div className="mt-6 h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={creationTrend}>
-                <defs>
-                  <linearGradient id="clicksGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={primaryColor} stopOpacity={0.35} />
-                    <stop offset="95%" stopColor={primaryColor} stopOpacity={0.02} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={borderColor} vertical={false} />
-                <XAxis
-                  dataKey="date"
-                  stroke="currentColor"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <YAxis
-                  stroke="currentColor"
-                  fontSize={12}
-                  tickLine={false}
-                  axisLine={false}
-                  allowDecimals={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: bgColor,
-                    borderColor: borderColor,
-                    borderRadius: "0.75rem",
-                    fontSize: "0.75rem",
-                  }}
-                />
-                <Area
-                  type="monotone"
-                  dataKey="count"
-                  stroke={primaryColor}
-                  strokeWidth={2}
-                  fillOpacity={1}
-                  fill="url(#clicksGradient)"
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-border/50 bg-muted/30 p-6">
-          <h2 className="font-semibold tracking-tight">Quick insights</h2>
-          <p className="text-xs text-muted-foreground">Summary of your account performance</p>
-
-          <div className="mt-6 space-y-4">
-            <div className="rounded-xl border border-border/60 bg-background p-4">
-              <p className="text-xs text-muted-foreground">Most active link metric</p>
-              <p className="mt-1 text-sm font-medium">
-                {links.length > 0
-                  ? `${Math.max(...links.map((link) => link.click_count ?? 0))} peak clicks on a single URL`
-                  : "No data available"}
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-background p-4">
-              <p className="text-xs text-muted-foreground">Account status</p>
-              <p className="mt-1 text-sm font-medium text-primary">Active & tracking properly</p>
-            </div>
-
-            <div className="rounded-xl border border-border/60 bg-background p-4">
-              <p className="text-xs text-muted-foreground">Recommendation</p>
-              <p className="mt-1 text-sm font-medium">
-                Share links across social channels to improve average click volume.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
+      
 
       <section className="rounded-2xl border border-border/50 bg-muted/30 p-6">
         <div className="flex items-center justify-between">
