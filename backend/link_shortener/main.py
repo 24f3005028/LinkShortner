@@ -7,6 +7,10 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse, RedirectResponse
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 from sqlalchemy.orm import Session
 
 from link_shortener.config import get_settings
@@ -36,6 +40,24 @@ async def lifespan(_: FastAPI):
     yield
 
 
+# ---------------------------------------------------------------------------
+# Rate limiting
+# ---------------------------------------------------------------------------
+# Key function: use the Bearer token (first 32 chars) as the bucket key for
+# authenticated requests so each user gets their own counter regardless of
+# which IP they're on. Fall back to the remote IP for anonymous callers.
+def _rate_limit_key(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    if auth.lower().startswith("bearer "):
+        token = auth[7:]
+        if token:
+            return f"user:{token[:32]}"
+    return get_remote_address(request)
+
+
+limiter = Limiter(key_func=_rate_limit_key)
+
+
 app = FastAPI(
     title=get_settings().app_name,
     version="1.0.0",
@@ -45,7 +67,9 @@ app = FastAPI(
 )
 
 settings = get_settings()
+app.state.limiter = limiter
 
+app.add_middleware(SlowAPIMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_allowed_origins,
@@ -53,6 +77,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONResponse:
+    """Return a clean 429 JSON response with Retry-After when a limit is hit."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded: {exc.detail}. Please slow down."},
+        headers={"Retry-After": "60"},
+    )
 
 
 def custom_openapi():
@@ -124,9 +158,10 @@ def auth_me(
     status_code=status.HTTP_201_CREATED,
     tags=["links"],
 )
+@limiter.limit(lambda: get_settings().rate_limit_create)
 def create_short_link(
-    payload: LinkCreate,
     request: Request,
+    payload: LinkCreate,
     response: Response,
     db: Session = Depends(get_db),
     user_id: str | None = Depends(get_current_user_id_optional),
@@ -207,7 +242,9 @@ def link_stats(
     ),
     include_in_schema=True,
 )
+@limiter.limit(lambda: get_settings().rate_limit_unlock)
 def unlock_link(
+    request: Request,
     code: str,
     payload: UnlockRequest,
     db: Session = Depends(get_db),
@@ -232,7 +269,8 @@ def unlock_link(
 
 
 @app.get("/{code}", include_in_schema=False)
-def redirect_to_original(code: str, db: Session = Depends(get_db)) -> Response:
+@limiter.limit(lambda: get_settings().rate_limit_redirect)
+def redirect_to_original(request: Request, code: str, db: Session = Depends(get_db)) -> Response:
     try:
         link = get_active_link(db, code)
     except LinkNotFoundError as exc:

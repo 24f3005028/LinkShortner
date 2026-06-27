@@ -20,7 +20,9 @@ The backend is a FastAPI + PostgreSQL REST API; the frontend is a Next.js 15 app
 | Stats endpoint | `GET /links/{code}/stats` returns click count + metadata |
 | JWT auth (Clerk) | Authenticated links are owned by a user and scoped to them |
 | Guest mode | Anonymous users can shorten links without signing in |
+| Rate limiting | Per-IP / per-user throttle on creation, redirects, and unlock |
 | OpenAPI docs | Auto-generated Swagger UI at `/docs` |
+| Docker Compose | One-command local stack with Postgres |
 
 ---
 
@@ -32,9 +34,10 @@ The backend is a FastAPI + PostgreSQL REST API; the frontend is a Next.js 15 app
 - [Alembic](https://alembic.sqlalchemy.org/) for schema migrations
 - [Clerk](https://clerk.com/) backend SDK for JWT verification
 - [bcrypt](https://pypi.org/project/bcrypt/) for password hashing
+- [slowapi](https://slowapi.readthedocs.io/) + [limits](https://limits.readthedocs.io/) for rate limiting
 - [pytest](https://pytest.org/) + [httpx](https://www.python-httpx.org/) for endpoint testing
 - [Gunicorn](https://gunicorn.org/) + Uvicorn workers for production
-- Docker for containerisation
+- Docker + Docker Compose for containerisation
 
 **Frontend**
 - [Next.js 15](https://nextjs.org/) (App Router, TypeScript)
@@ -79,7 +82,7 @@ The backend is a FastAPI + PostgreSQL REST API; the frontend is a Next.js 15 app
 ### Prerequisites
 
 - Python 3.11+
-- A running PostgreSQL instance
+- A running PostgreSQL instance (or use Docker Compose — see below)
 
 ### Steps
 
@@ -112,32 +115,38 @@ API available at **http://127.0.0.1:8000**. Swagger UI at **http://127.0.0.1:800
 
 ---
 
-## Running the Backend with Docker
+## Running with Docker Compose (recommended)
+
+This starts the API **and** a Postgres database in one command — no local Postgres required.
 
 ```bash
-cd backend
+# 1. Copy the env template and fill in your Clerk keys (optional if running without auth)
+cp .env.example .env
 
-docker build -t shawty-api .
-
-docker run --rm -p 8000:8000 \
-  -e LINK_SHORTENER_DATABASE_URL="postgresql+psycopg://postgres:postgres@host.docker.internal:5432/link_shortener" \
-  shawty-api
+# 2. Build and start both services
+docker compose up --build
 ```
 
-> **Windows PowerShell** — replace `\` with `` ` `` for line continuation, or put everything on one line.
+The API is now at **http://localhost:8000** and Swagger at **http://localhost:8000/docs**.
+
+Postgres data is persisted in the `pgdata` named volume — it survives `docker compose down`.
+To wipe and start fresh: `docker compose down -v`.
+
+**Service health:** The `api` service waits for Postgres to pass its healthcheck before starting,
+so you never hit a "connection refused" race condition on first boot.
 
 ---
 
 ## Running the Tests
 
-Tests use an isolated in-memory SQLite database; no PostgreSQL required.
+Tests use an isolated in-memory SQLite database and a freshly reset rate-limit store — no PostgreSQL required.
 
 ```bash
 cd backend
 python -m pytest tests/ -v
 ```
 
-Expected output — all 16 tests pass:
+Expected output — all 17 tests pass:
 
 ```
 tests/test_links.py::test_create_link_returns_short_url_and_stats    PASSED
@@ -156,7 +165,8 @@ tests/test_links.py::test_unlock_with_correct_password_returns_url   PASSED
 tests/test_links.py::test_unlock_with_wrong_password_returns_401     PASSED
 tests/test_links.py::test_unlock_records_click                       PASSED
 tests/test_links.py::test_unlock_on_unlocked_link_returns_url        PASSED
-16 passed in ~3s
+tests/test_links.py::test_create_link_rate_limit_trips_on_11th_request PASSED
+17 passed in ~4s
 ```
 
 ---
@@ -218,6 +228,17 @@ curl -X POST http://127.0.0.1:8000/AbCdEfG/unlock \
 # → {"url": "https://example.com/secret"}
 ```
 
+**Verify rate limiting (11th request within a minute returns 429)**
+```bash
+for i in $(seq 1 11); do
+  curl -s -o /dev/null -w "%{http_code}\n" \
+    -X POST http://127.0.0.1:8000/links \
+    -H "Content-Type: application/json" \
+    -d "{\"url\":\"https://example.com/$i\"}"
+done
+# First 10 → 201, 11th → 429
+```
+
 **Fetch stats (requires Bearer token)**
 ```bash
 curl http://127.0.0.1:8000/links/docs/stats \
@@ -239,6 +260,19 @@ Codes are 7-character strings from a **Base58 alphabet** — the same set Bitcoi
 
 ### Idempotency
 Posting the same long URL twice as the **same authenticated user** returns the existing link (HTTP 200) instead of creating a duplicate. Anonymous requests always create a new code because there is no stable identity to key on.
+
+### Rate limiting
+Throttle is implemented with **slowapi** (a Starlette-native wrapper around the `limits` library). Three endpoints are guarded:
+
+| Endpoint | Default limit | Rationale |
+|---|---|---|
+| `POST /links` | 10 / minute | Creation is a write; protects the DB from bulk spam |
+| `GET /{code}` | 60 / minute | Redirects are read-heavy; limit is generous but caps scraping |
+| `POST /{code}/unlock` | 5 / minute | Prevents brute-force password guessing |
+
+The key function prefers the **Bearer token** (first 32 chars) as the bucket identifier for authenticated requests so each user gets their own counter regardless of IP — useful behind a shared NAT. Anonymous requests fall back to the client IP.
+
+The in-memory store is used by default, which is sufficient for a single process. Swapping to Redis requires one line: `Limiter(key_func=..., storage_uri="redis://...")`. Limits are configurable at runtime via `LINK_SHORTENER_RATE_LIMIT_*` env vars.
 
 ### Password lock
 Passwords are hashed with **bcrypt** before storage — the plain text never touches the database. The redirect endpoint (`GET /{code}`) returns `423 Locked` with a JSON body instead of a 301 when a link is locked; the frontend intercepts this at the `/unlock/{code}` page, collects the password, calls `POST /{code}/unlock`, and redirects client-side on success.
@@ -275,11 +309,17 @@ Roughly **4–5 hours** spread across implementation (backend API + auth, passwo
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `LINK_SHORTENER_DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `LINK_SHORTENER_CLERK_SECRET_KEY` | For auth | Clerk secret key |
-| `LINK_SHORTENER_CLERK_JWT_KEY` | Optional | Clerk JWT verification key |
-| `LINK_SHORTENER_CLERK_AUTHORIZED_PARTIES` | Optional | Comma-separated list of allowed JWT issuers |
-| `LINK_SHORTENER_CORS_ALLOWED_ORIGINS` | Optional | Comma-separated allowed CORS origins |
-| `LINK_SHORTENER_SHORT_CODE_LENGTH` | Optional | Code length, default `7` |
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `LINK_SHORTENER_DATABASE_URL` | ✅ | — | PostgreSQL connection string |
+| `LINK_SHORTENER_CLERK_SECRET_KEY` | For auth | — | Clerk secret key |
+| `LINK_SHORTENER_CLERK_JWT_KEY` | Optional | — | Clerk JWT verification key |
+| `LINK_SHORTENER_CLERK_AUTHORIZED_PARTIES` | Optional | — | Comma-separated list of allowed JWT issuers |
+| `LINK_SHORTENER_CORS_ALLOWED_ORIGINS` | Optional | `http://localhost:3000` | Comma-separated allowed CORS origins |
+| `LINK_SHORTENER_SHORT_CODE_LENGTH` | Optional | `7` | Generated code length |
+| `LINK_SHORTENER_RATE_LIMIT_CREATE` | Optional | `10/minute` | Rate limit for `POST /links` |
+| `LINK_SHORTENER_RATE_LIMIT_REDIRECT` | Optional | `60/minute` | Rate limit for `GET /{code}` |
+| `LINK_SHORTENER_RATE_LIMIT_UNLOCK` | Optional | `5/minute` | Rate limit for `POST /{code}/unlock` |
+| `POSTGRES_USER` | Docker Compose | `shawty` | Postgres username (compose only) |
+| `POSTGRES_PASSWORD` | Docker Compose | `shawtypass` | Postgres password (compose only) |
+| `POSTGRES_DB` | Docker Compose | `link_shortener` | Postgres database name (compose only) |

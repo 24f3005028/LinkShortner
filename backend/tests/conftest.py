@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from link_shortener.database import Base, get_db
-from link_shortener.main import app
+from link_shortener.main import app, limiter
 
 
 @pytest.fixture()
@@ -26,9 +26,13 @@ def client():
             db.close()
 
     app.dependency_overrides[get_db] = override_get_db
-    # lifespan=False skips init_db() so no Coolify connection during tests
+    # Reset the rate-limit counters so each test starts with a clean slate.
+    # Without this, the shared in-memory limiter accumulates counts across
+    # all tests and trips the 10/minute create limit partway through the suite.
+    limiter.reset()
     test_client = TestClient(app, raise_server_exceptions=True)
     yield test_client
 
     app.dependency_overrides.clear()
     Base.metadata.drop_all(bind=engine)
+    limiter.reset()

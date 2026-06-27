@@ -262,3 +262,19 @@ def test_unlock_on_unlocked_link_returns_url(client):
     assert response.status_code == 200
     assert response.json()["url"] == "https://example.com/open"
 
+
+# ── Rate-limit tests ───────────────────────────────────────────────────────────
+
+def test_create_link_rate_limit_trips_on_11th_request(client):
+    """The 11th POST /links from the same client within a minute returns 429."""
+    # The default limit is 10/minute.  We send 10 successful requests then
+    # verify the 11th is rejected with the correct status and Retry-After header.
+    limit = 10
+    for i in range(limit):
+        r = client.post("/links", json={"url": f"https://example.com/rl/{i}"})
+        assert r.status_code in (200, 201), f"Request {i+1} unexpectedly failed: {r.status_code}"
+
+    r = client.post("/links", json={"url": "https://example.com/rl/overflow"})
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+    assert "Rate limit exceeded" in r.json()["detail"]

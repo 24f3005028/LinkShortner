@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     )
     short_code_length: int = 7
     max_code_generation_attempts: int = 8
+    # Rate limits (slowapi format: "N/period", e.g. "10/minute")
+    rate_limit_create: str = "10/minute"
+    rate_limit_redirect: str = "60/minute"
+    rate_limit_unlock: str = "5/minute"
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="LINK_SHORTENER_")
 
