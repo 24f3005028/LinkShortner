@@ -12,6 +12,10 @@ import {
   X,
   Infinity,
   Circle,
+  Lock,
+  Unlock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { createShortLink, listShortLinks } from "@/lib/api";
 import { deleteLocalLink, getLocalLinks, saveLocalLink } from "@/lib/localLinks";
@@ -25,7 +29,6 @@ interface Toast {
   message: string;
   type: ToastType;
 }
-
 
 let toastId = 0;
 
@@ -145,12 +148,20 @@ function CopyButton({ text, className = "" }: { text: string; className?: string
 
 
 // --- Shorten result card ---
-function ShortLinkResult({ shortUrl, onDismiss }: { shortUrl: string; onDismiss: () => void }) {
+function ShortLinkResult({ shortUrl, isLocked, onDismiss }: { shortUrl: string; isLocked: boolean; onDismiss: () => void }) {
   return (
     <div className="mt-5 w-full max-w-xl animate-in slide-in-from-bottom-1 fade-in duration-300">
       <div className="flex items-center gap-3 bg-primary/8 border border-primary/20 rounded-xl px-4 py-3">
         <div className="flex-1 min-w-0">
-          <p className="text-xs text-muted-foreground font-medium mb-0.5">Your short link</p>
+          <p className="text-xs text-muted-foreground font-medium mb-0.5 flex items-center gap-1.5">
+            Your short link
+            {isLocked && (
+              <span className="inline-flex items-center gap-1 text-amber-500">
+                <Lock className="size-3" aria-hidden />
+                Password protected
+              </span>
+            )}
+          </p>
           <a
             href={shortUrl}
             target="_blank"
@@ -200,9 +211,9 @@ function formatDisplayUrl(url: string, maxLen = 48) {
   try {
     const u = new URL(url);
     const display = u.hostname + u.pathname;
-    return display.length > maxLen ? display.slice(0, maxLen) + "…" : display;
+    return display.length > maxLen ? display.slice(0, maxLen) + "\u2026" : display;
   } catch {
-    return url.length > maxLen ? url.slice(0, maxLen) + "…" : url;
+    return url.length > maxLen ? url.slice(0, maxLen) + "\u2026" : url;
   }
 }
 
@@ -229,13 +240,19 @@ function getForeverExpiryIso() {
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-
 export default function Home() {
   const { getToken, isSignedIn } = useAuth();
   const [url, setUrl] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date | null | undefined>(undefined);
   const [showExpiryPicker, setShowExpiryPicker] = useState(false);
+
+  // Password lock state
+  const [lockEnabled, setLockEnabled] = useState(false);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+
   const [shortUrl, setShortUrl] = useState<string | null>(null);
+  const [shortLinkLocked, setShortLinkLocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [localLinks, setLocalLinks] = useState<LinkRead[]>([]);
@@ -244,6 +261,7 @@ export default function Home() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const expiryTriggerRef = useRef<HTMLDivElement>(null);
 
 
@@ -257,6 +275,12 @@ export default function Home() {
   function dismissToast(id: number) {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }
+
+
+  // Focus password input when lock is enabled
+  useEffect(() => {
+    if (lockEnabled) passwordRef.current?.focus();
+  }, [lockEnabled]);
 
 
   // --- Load local links on mount ---
@@ -297,6 +321,7 @@ export default function Home() {
   async function handleShorten() {
     setError(null);
     setShortUrl(null);
+    setShortLinkLocked(false);
 
     if (!url.trim()) {
       setError("Please enter a valid URL.");
@@ -312,31 +337,47 @@ export default function Home() {
       return;
     }
 
+    if (lockEnabled && !password.trim()) {
+      setError("Enter a password for the locked link, or disable the lock.");
+      passwordRef.current?.focus();
+      return;
+    }
+
     try {
       setLoading(true);
       const normalizedUrl = url.trim().startsWith("http") ? url.trim() : `https://${url.trim()}`;
       const expiresAtIso = expiresAt === null ? getForeverExpiryIso() : expiresAt?.toISOString();
+      const passwordValue = lockEnabled ? password.trim() : undefined;
 
+      const payload = {
+        url: normalizedUrl,
+        ...(expiresAtIso ? { expires_at: expiresAtIso } : {}),
+        ...(passwordValue ? { password: passwordValue } : {}),
+      };
+
+      let result: LinkRead;
       if (isSignedIn) {
         const token = await getToken();
-        const result = await createShortLink(
-          { url: normalizedUrl, ...(expiresAtIso ? { expires_at: expiresAtIso } : {}) },
-          token ?? undefined,
-        );
-        setShortUrl(result.short_url);
+        result = await createShortLink(payload, token ?? undefined);
         setRecentLinks((prev) => [result, ...prev].slice(0, 5));
-        addToast("Short link created!", "success");
       } else {
-        const result = await createShortLink({ url: normalizedUrl, ...(expiresAtIso ? { expires_at: expiresAtIso } : {}) });
-        setShortUrl(result.short_url);
+        result = await createShortLink(payload);
         await saveLocalLink(result);
         setLocalLinks(await getLocalLinks());
-        addToast("Short link created and saved!", "success");
       }
+
+      setShortUrl(result.short_url);
+      setShortLinkLocked(result.is_locked ?? false);
+      addToast(
+        lockEnabled ? "Password-protected link created!" : "Short link created!",
+        "success",
+      );
 
       setUrl("");
       setExpiresAt(undefined);
       setShowExpiryPicker(false);
+      setLockEnabled(false);
+      setPassword("");
     } catch (caughtError) {
       const msg = caughtError instanceof Error ? caughtError.message : "Failed to shorten URL.";
       setError(msg);
@@ -369,13 +410,12 @@ export default function Home() {
     <div className="min-h-dvh flex flex-col bg-background text-foreground">
 
       <main className="flex-1 w-full">
-        {/* ── Hero ───────────────────────────────────────────── */}
+        {/* ── Hero ── */}
         <section className="mx-auto max-w-3xl px-6 pt-28 pb-20 flex flex-col items-center text-center">
 
-          {/* Eyebrow badge — replaced bullet • with Lucide <Circle> */}
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold tracking-wide mb-6 select-none">
             <Circle className="size-2.5 fill-current" aria-hidden="true" />
-            Free • No account required
+            Free \u2022 No account required
           </span>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tighter leading-[1.08] mb-5">
@@ -396,7 +436,7 @@ export default function Home() {
             Shorten any URL in seconds. Track clicks, set expiry dates, and share clean links.
           </p>
 
-          {/* Input row */}
+          {/* ── Input row ── */}
           <div className="w-full max-w-xl flex gap-2">
             <div className="relative flex-1">
               <svg
@@ -446,7 +486,6 @@ export default function Home() {
                   <line x1="3" y1="10" x2="21" y2="10" />
                 </svg>
 
-                {/* ── replaced ∞ with Lucide <Infinity> ── */}
                 {expiresAt === undefined
                   ? ""
                   : expiresAt === null
@@ -458,7 +497,6 @@ export default function Home() {
                   )
                   : `${expiresAt.toLocaleDateString([], { month: "short", day: "numeric" })}`}
 
-                {/* ── replaced ✕ with Lucide <X> ── */}
                 {expiresAt !== undefined && (
                   <span
                     role="button"
@@ -485,6 +523,29 @@ export default function Home() {
               )}
             </div>
 
+            {/* ── Lock button ── */}
+            <button
+              type="button"
+              onClick={() => {
+                setLockEnabled((v) => !v);
+                if (lockEnabled) setPassword("");
+              }}
+              aria-label={lockEnabled ? "Remove password lock" : "Add password lock"}
+              title={lockEnabled ? "Click to remove password protection" : "Only open with a password"}
+              className={[
+                "h-11 px-3 rounded-xl border text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm shrink-0",
+                lockEnabled
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-500 hover:bg-amber-500/15"
+                  : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
+              ].join(" ")}
+            >
+              {lockEnabled
+                ? <Lock className="size-3.5" aria-hidden />
+                : <Unlock className="size-3.5" aria-hidden />
+              }
+              {lockEnabled ? "Locked" : "Lock"}
+            </button>
+
             <button
               onClick={handleShorten}
               disabled={loading}
@@ -497,7 +558,7 @@ export default function Home() {
                     <circle cx="7" cy="7" r="5.5" stroke="currentColor" strokeWidth="1.5" strokeOpacity="0.25" />
                     <path d="M7 1.5a5.5 5.5 0 0 1 5.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
                   </svg>
-                  Shortening…
+                  Shortening\u2026
                 </>
               ) : (
                 <>
@@ -510,11 +571,54 @@ export default function Home() {
             </button>
           </div>
 
+          {/* ── Password input (shown when lock is enabled) ── */}
+          {lockEnabled && (
+            <div className="mt-2 w-full max-w-xl animate-in slide-in-from-top-1 fade-in duration-200">
+              <div className="relative">
+                <Lock
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 size-3.5 text-amber-500 pointer-events-none"
+                  aria-hidden
+                />
+                <input
+                  ref={passwordRef}
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Set a password for this link\u2026"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  disabled={loading}
+                  aria-label="Link password"
+                  className="w-full h-10 rounded-xl border border-amber-500/30 bg-amber-500/5 pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 transition-shadow disabled:opacity-50"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {showPassword
+                    ? <EyeOff className="size-3.5" aria-hidden />
+                    : <Eye className="size-3.5" aria-hidden />
+                  }
+                </button>
+              </div>
+              <p className="mt-1.5 text-xs text-muted-foreground text-left pl-1">
+                Visitors will be prompted to enter this password before being redirected.
+              </p>
+            </div>
+          )}
+
           {/* Error banner */}
           {error ? <ErrorBanner message={error} onDismiss={() => setError(null)} /> : null}
 
           {/* Result card */}
-          {shortUrl ? <ShortLinkResult shortUrl={shortUrl} onDismiss={() => setShortUrl(null)} /> : null}
+          {shortUrl ? (
+            <ShortLinkResult
+              shortUrl={shortUrl}
+              isLocked={shortLinkLocked}
+              onDismiss={() => { setShortUrl(null); setShortLinkLocked(false); }}
+            />
+          ) : null}
 
           {/* Feature pills */}
           <div className="mt-10 flex flex-wrap items-center justify-center gap-3 text-xs text-muted-foreground">
@@ -522,7 +626,7 @@ export default function Home() {
               { icon: "M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6", label: "No account needed" },
               { icon: "M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z", label: "Click analytics" },
               { icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z", label: "Expiry dates" },
-              { icon: "M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z", label: "One-click copy" },
+              { icon: "M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z", label: "Password lock" },
             ].map(({ icon, label }) => (
               <span key={label} className="flex items-center gap-1.5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -538,7 +642,7 @@ export default function Home() {
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Your recent links</h2>
                 <Link href="/dashboard" className="text-xs text-primary hover:underline">
-                  View all →
+                  View all \u2192
                 </Link>
               </div>
 
@@ -553,13 +657,14 @@ export default function Home() {
                         href={link.short_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="truncate font-medium text-primary hover:underline"
+                        className="truncate font-medium text-primary hover:underline inline-flex items-center gap-1.5"
                       >
                         {link.short_url}
+                        {link.is_locked && <Lock className="size-3 text-amber-500 shrink-0" aria-label="Password protected" />}
                       </a>
                       <span className="truncate text-xs text-muted-foreground">
                         {link.original_url.length > 50
-                          ? `${link.original_url.slice(0, 50)}…`
+                          ? `${link.original_url.slice(0, 50)}\u2026`
                           : link.original_url}
                       </span>
                     </div>
@@ -572,7 +677,6 @@ export default function Home() {
                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
                         aria-label="Copy"
                       >
-                        {/* ── replaced ✓ text with Lucide <Check> ── */}
                         {copiedCode === link.code ? (
                           <Check className="size-3.5 text-primary" aria-hidden="true" />
                         ) : (
@@ -596,7 +700,7 @@ export default function Home() {
           ) : null}
         </section>
 
-        {/* ── Local links table (guests only) ───────────────── */}
+        {/* ── Local links table (guests only) ── */}
         {!isSignedIn ? (
           <section className="mx-auto max-w-5xl px-6 pb-20">
             <div className="flex items-center justify-between mb-4">
@@ -654,9 +758,10 @@ export default function Home() {
                               href={link.short_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-primary font-mono text-xs font-semibold hover:underline underline-offset-2 truncate max-w-[140px] block"
+                              className="text-primary font-mono text-xs font-semibold hover:underline underline-offset-2 truncate max-w-[140px] flex items-center gap-1.5"
                             >
                               {link.short_url.replace(/^https?:\/\//, "")}
+                              {link.is_locked && <Lock className="size-3 text-amber-500 shrink-0" aria-label="Password protected" />}
                             </a>
                           </td>
                           <td className="px-4 py-3.5 hidden sm:table-cell">

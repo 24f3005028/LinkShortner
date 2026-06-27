@@ -2,6 +2,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
+import bcrypt
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -17,6 +18,14 @@ class LinkNotFoundError(Exception):
 
 
 class LinkExpiredError(Exception):
+    pass
+
+
+class LinkLockedError(Exception):
+    pass
+
+
+class InvalidPasswordError(Exception):
     pass
 
 
@@ -46,6 +55,14 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
+
+
 def create_link(
     db: Session,
     *,
@@ -53,9 +70,12 @@ def create_link(
     custom_code: str | None = None,
     expires_at: datetime | None = None,
     owner_id: str | None = None,
+    password: str | None = None,
     settings: Settings | None = None,
 ) -> LinkCreateResult:
     settings = settings or get_settings()
+    password_hash = hash_password(password) if password else None
+
     if owner_id is not None:
         existing = db.scalar(select(Link).where(Link.original_url == original_url, Link.owner_id == owner_id))
         if existing is not None:
@@ -64,12 +84,26 @@ def create_link(
     if custom_code:
         if db.scalar(select(Link).where(Link.code == custom_code)) is not None:
             raise ShortCodeConflictError("Short code is already in use.")
-        return _persist_link(db, code=custom_code, original_url=original_url, expires_at=expires_at, owner_id=owner_id)
+        return _persist_link(
+            db,
+            code=custom_code,
+            original_url=original_url,
+            expires_at=expires_at,
+            owner_id=owner_id,
+            password_hash=password_hash,
+        )
 
     for _ in range(settings.max_code_generation_attempts):
         code = generate_short_code(settings.short_code_length)
         try:
-            return _persist_link(db, code=code, original_url=original_url, expires_at=expires_at, owner_id=owner_id)
+            return _persist_link(
+                db,
+                code=code,
+                original_url=original_url,
+                expires_at=expires_at,
+                owner_id=owner_id,
+                password_hash=password_hash,
+            )
         except ShortCodeConflictError:
             continue
 
@@ -83,8 +117,15 @@ def _persist_link(
     original_url: str,
     expires_at: datetime | None,
     owner_id: str | None,
+    password_hash: str | None = None,
 ) -> LinkCreateResult:
-    link = Link(code=code, original_url=original_url, expires_at=_as_utc(expires_at), owner_id=owner_id)
+    link = Link(
+        code=code,
+        original_url=original_url,
+        expires_at=_as_utc(expires_at),
+        owner_id=owner_id,
+        password_hash=password_hash,
+    )
     db.add(link)
     try:
         db.commit()

@@ -6,16 +6,18 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, s
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPAuthorizationCredentials
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from link_shortener.config import get_settings
 from link_shortener.auth import bearer_scheme, get_current_user_id, get_current_user_id_optional
 from link_shortener.models import Link
 from link_shortener.database import get_db, init_db
-from link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks
+from link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks, UnlockRequest
 from link_shortener.services import (
+    InvalidPasswordError,
     LinkExpiredError,
+    LinkLockedError,
     LinkNotFoundError,
     ShortCodeConflictError,
     ShortCodeGenerationError,
@@ -24,6 +26,7 @@ from link_shortener.services import (
     get_active_link,
     list_links,
     record_click,
+    verify_password,
 )
 
 
@@ -81,7 +84,7 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 
-def _build_link_read(request: Request, link) -> LinkRead:
+def _build_link_read(request: Request, link: Link) -> LinkRead:
     short_url = urljoin(str(request.base_url), link.code)
     return LinkRead(
         code=link.code,
@@ -90,6 +93,7 @@ def _build_link_read(request: Request, link) -> LinkRead:
         click_count=link.click_count,
         created_at=link.created_at,
         expires_at=link.expires_at,
+        is_locked=link.is_locked,
     )
 
 
@@ -111,7 +115,6 @@ def auth_me(
     token_prefix = None
     if credentials is not None and credentials.credentials:
         token_prefix = f"{credentials.credentials[:12]}..."
-
     return {"user_id": user_id, "authenticated": True, "token_prefix": token_prefix}
 
 
@@ -132,14 +135,18 @@ def create_short_link(
     if expires_at is not None:
         normalized = expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)
         if normalized <= datetime.now(timezone.utc):
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="expires_at must be in the future.")
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="expires_at must be in the future.",
+            )
     try:
         result = create_link(
             db,
             original_url=str(payload.url),
             custom_code=payload.custom_code,
             expires_at=payload.expires_at,
-            owner_id=user_id,  # None for anonymous
+            owner_id=user_id,
+            password=payload.password,
         )
     except ShortCodeConflictError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
@@ -170,20 +177,41 @@ def list_short_links(
 
 
 @app.get("/links/{code}/stats", response_model=LinkStats, tags=["links"])
-def link_stats(code: str, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)) -> LinkStats:
+def link_stats(
+    code: str,
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),
+) -> LinkStats:
     link = db.query(Link).filter(Link.code == code, Link.owner_id == user_id).first()
-
     if link is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found.")
-
     if link.is_expired:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link has expired.")
+    return LinkStats(
+        code=link.code,
+        original_url=link.original_url,
+        click_count=link.click_count,
+        created_at=link.created_at,
+        expires_at=link.expires_at,
+        is_locked=link.is_locked,
+    )
 
-    return LinkStats.model_validate(link)
 
-
-@app.get("/{code}", include_in_schema=False)
-def redirect_to_original(code: str, db: Session = Depends(get_db)) -> RedirectResponse:
+@app.post(
+    "/{code}/unlock",
+    tags=["redirect"],
+    summary="Verify password and get redirect URL for a locked link",
+    description=(
+        "Submit the password for a locked short link. "
+        "Returns the destination URL on success so the client can redirect."
+    ),
+    include_in_schema=True,
+)
+def unlock_link(
+    code: str,
+    payload: UnlockRequest,
+    db: Session = Depends(get_db),
+) -> JSONResponse:
     try:
         link = get_active_link(db, code)
     except LinkNotFoundError as exc:
@@ -191,11 +219,39 @@ def redirect_to_original(code: str, db: Session = Depends(get_db)) -> RedirectRe
     except LinkExpiredError as exc:
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link has expired.") from exc
 
+    if not link.is_locked:
+        # Not locked — just return the URL directly
+        record_click(db, link)
+        return JSONResponse({"url": link.original_url})
+
+    if not verify_password(payload.password, link.password_hash):  # type: ignore[arg-type]
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Incorrect password.")
+
+    record_click(db, link)
+    return JSONResponse({"url": link.original_url})
+
+
+@app.get("/{code}", include_in_schema=False)
+def redirect_to_original(code: str, db: Session = Depends(get_db)) -> Response:
+    try:
+        link = get_active_link(db, code)
+    except LinkNotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Link not found.") from exc
+    except LinkExpiredError as exc:
+        raise HTTPException(status_code=status.HTTP_410_GONE, detail="Link has expired.") from exc
+
+    # If the link is locked, return 423 Locked with a JSON body so the
+    # frontend knows to show the password prompt instead of redirecting.
+    if link.is_locked:
+        return JSONResponse(
+            status_code=423,
+            content={"locked": True, "code": link.code},
+            headers={"Cache-Control": "no-store"},
+        )
+
     record_click(db, link)
     return RedirectResponse(
         url=link.original_url,
         status_code=status.HTTP_302_FOUND,
         headers={"Cache-Control": "no-store"},
     )
-
-

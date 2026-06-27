@@ -20,14 +20,18 @@ class Link(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     owner_id: Mapped[str | None] = mapped_column(String(255), index=True, nullable=True)
+    # bcrypt hash of the password; None means no lock
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     @property
     def is_expired(self) -> bool:
         if self.expires_at is None:
             return False
-
         expires_at = self.expires_at
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-
         return expires_at <= utc_now()
+
+    @property
+    def is_locked(self) -> bool:
+        return self.password_hash is not None
