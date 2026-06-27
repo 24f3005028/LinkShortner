@@ -430,7 +430,7 @@ export default function Home() {
 
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 border border-primary/20 text-primary text-xs font-semibold tracking-wide mb-6 select-none">
             <Circle className="size-2.5 fill-current" aria-hidden="true" />
-            Free \u2022 No account required
+             No account required
           </span>
 
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tighter leading-[1.08] mb-5">
@@ -658,7 +658,7 @@ export default function Home() {
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Your recent links</h2>
                 <Link href="/dashboard" className="text-xs text-primary hover:underline">
-                  View all \u2192
+                  View all 
                 </Link>
               </div>
 

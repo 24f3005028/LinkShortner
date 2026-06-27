@@ -66,14 +66,19 @@ def test_custom_code_conflict_returns_409(client):
 
 
 def test_same_url_is_idempotent(client):
-    payload = {"url": "https://example.com/same"}
+    # Deduplication is per-owner, so we need an authenticated user.
+    _set_optional_user(client, "user_idem")
+    try:
+        payload = {"url": "https://example.com/same"}
 
-    first = client.post("/links", json=payload)
-    second = client.post("/links", json=payload)
+        first = client.post("/links", json=payload)
+        second = client.post("/links", json=payload)
 
-    assert first.status_code == 201
-    assert second.status_code == 200
-    assert first.json()["code"] == second.json()["code"]
+        assert first.status_code == 201
+        assert second.status_code == 200
+        assert first.json()["code"] == second.json()["code"]
+    finally:
+        _clear_user(client)
 
 
 def test_anonymous_links_are_not_deduplicated(client):
@@ -96,7 +101,8 @@ def test_auth_me_returns_authenticated_user_id(client):
         body = response.json()
         assert body["user_id"] == "user_test"
         assert body["authenticated"] is True
-        assert body["token_prefix"] == "test.jwt.toke..."
+        # The API slices [:12] characters then appends "..."
+        assert body["token_prefix"] == "test.jwt.tok..."
     finally:
         _clear_user(client)
 
@@ -107,9 +113,12 @@ def test_openapi_includes_bearer_security(client):
     assert response.status_code == 200
     schema = response.json()
 
+    # BearerAuth scheme is injected into the components
     assert schema["components"]["securitySchemes"]["BearerAuth"]["scheme"] == "bearer"
+    # Authenticated list and stats endpoints carry BearerAuth
     assert {"BearerAuth": []} in schema["paths"]["/links"]["get"]["security"]
     assert {"BearerAuth": []} in schema["paths"]["/links/{code}/stats"]["get"]["security"]
+    # /auth/me is tagged "auth" so it also receives BearerAuth via custom_openapi
     assert {"BearerAuth": []} in schema["paths"]["/auth/me"]["get"]["security"]
 
 
@@ -157,3 +166,99 @@ def test_past_expiry_is_rejected(client):
     response = client.post("/links", json={"url": "https://example.com/past", "expires_at": past_expiry})
 
     assert response.status_code == 422
+
+
+# ── Password-lock tests ────────────────────────────────────────────────────────
+
+def test_locked_link_is_flagged_in_response(client):
+    """Creating a link with a password sets is_locked=True in the response."""
+    response = client.post(
+        "/links",
+        json={"url": "https://example.com/secret", "password": "hunter2"},
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["is_locked"] is True
+
+
+def test_locked_link_redirect_returns_423(client):
+    """GET /{code} on a locked link returns 423 instead of a redirect."""
+    created = client.post(
+        "/links",
+        json={"url": "https://example.com/locked", "password": "s3cr3t"},
+    ).json()
+
+    response = client.get(f"/{created['code']}", follow_redirects=False)
+
+    assert response.status_code == 423
+    body = response.json()
+    assert body["locked"] is True
+    assert body["code"] == created["code"]
+
+
+def test_unlock_with_correct_password_returns_url(client):
+    """POST /{code}/unlock with the right password returns the destination URL."""
+    created = client.post(
+        "/links",
+        json={"url": "https://example.com/guarded", "password": "open-sesame"},
+    ).json()
+
+    response = client.post(
+        f"/{created['code']}/unlock",
+        json={"password": "open-sesame"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://example.com/guarded"
+
+
+def test_unlock_with_wrong_password_returns_401(client):
+    """POST /{code}/unlock with a wrong password returns 401."""
+    created = client.post(
+        "/links",
+        json={"url": "https://example.com/guarded2", "password": "correct"},
+    ).json()
+
+    response = client.post(
+        f"/{created['code']}/unlock",
+        json={"password": "wrong"},
+    )
+
+    assert response.status_code == 401
+    assert "Incorrect" in response.json()["detail"]
+
+
+def test_unlock_records_click(client):
+    """A successful unlock increments the click counter."""
+    _set_optional_user(client, "user_lock")
+    _set_required_user(client, "user_lock")
+    try:
+        created = client.post(
+            "/links",
+            json={"url": "https://example.com/counted", "password": "clickme"},
+        ).json()
+
+        client.post(f"/{created['code']}/unlock", json={"password": "clickme"})
+
+        stats = client.get(f"/links/{created['code']}/stats")
+        assert stats.json()["click_count"] == 1
+    finally:
+        _clear_user(client)
+
+
+def test_unlock_on_unlocked_link_returns_url(client):
+    """POST /{code}/unlock on a non-locked link returns the URL without needing a password."""
+    created = client.post(
+        "/links",
+        json={"url": "https://example.com/open"},
+    ).json()
+
+    response = client.post(
+        f"/{created['code']}/unlock",
+        json={"password": "any"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["url"] == "https://example.com/open"
+

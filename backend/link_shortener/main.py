@@ -75,7 +75,7 @@ def custom_openapi():
     for path_item in schema.get("paths", {}).values():
         for operation in path_item.values():
             if isinstance(operation, dict) and any(tag in {"links", "auth"} for tag in operation.get("tags", [])):
-                operation.setdefault("security", [{"BearerAuth": []}])
+                operation["security"] = [{"BearerAuth": []}]
 
     app.openapi_schema = schema
     return schema
