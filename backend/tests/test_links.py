@@ -46,7 +46,7 @@ def test_redirect_records_click(client):
 
     redirect = client.get(f"/{created['code']}", follow_redirects=False)
 
-    assert redirect.status_code == 301
+    assert redirect.status_code == 302
     assert redirect.headers["location"] == "https://example.com/docs"
 
     stats = client.get(f"/links/{created['code']}/stats")
@@ -74,6 +74,43 @@ def test_same_url_is_idempotent(client):
     assert first.status_code == 201
     assert second.status_code == 200
     assert first.json()["code"] == second.json()["code"]
+
+
+def test_anonymous_links_are_not_deduplicated(client):
+    payload = {"url": "https://example.com/anonymous"}
+
+    first = client.post("/links", json=payload)
+    second = client.post("/links", json=payload)
+
+    assert first.status_code == 201
+    assert second.status_code == 201
+    assert first.json()["code"] != second.json()["code"]
+
+
+def test_auth_me_returns_authenticated_user_id(client):
+    _set_required_user(client, "user_test")
+    try:
+        response = client.get("/auth/me", headers={"Authorization": "Bearer test.jwt.token"})
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["user_id"] == "user_test"
+        assert body["authenticated"] is True
+        assert body["token_prefix"] == "test.jwt.toke..."
+    finally:
+        _clear_user(client)
+
+
+def test_openapi_includes_bearer_security(client):
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    schema = response.json()
+
+    assert schema["components"]["securitySchemes"]["BearerAuth"]["scheme"] == "bearer"
+    assert {"BearerAuth": []} in schema["paths"]["/links"]["get"]["security"]
+    assert {"BearerAuth": []} in schema["paths"]["/links/{code}/stats"]["get"]["security"]
+    assert {"BearerAuth": []} in schema["paths"]["/auth/me"]["get"]["security"]
 
 
 def test_paginated_list(client):

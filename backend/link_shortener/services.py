@@ -56,9 +56,10 @@ def create_link(
     settings: Settings | None = None,
 ) -> LinkCreateResult:
     settings = settings or get_settings()
-    existing = db.scalar(select(Link).where(Link.original_url == original_url, Link.owner_id == owner_id))
-    if existing is not None:
-        return LinkCreateResult(link=existing, created=False)
+    if owner_id is not None:
+        existing = db.scalar(select(Link).where(Link.original_url == original_url, Link.owner_id == owner_id))
+        if existing is not None:
+            return LinkCreateResult(link=existing, created=False)
 
     if custom_code:
         if db.scalar(select(Link).where(Link.code == custom_code)) is not None:

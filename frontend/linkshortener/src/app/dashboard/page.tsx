@@ -6,17 +6,13 @@ import { useAuth } from "@clerk/nextjs";
 import {
   Area,
   AreaChart,
-  Bar,
-  BarChart,
   CartesianGrid,
-  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import {
-  BarChart3,
   ChartNoAxesCombined,
   Copy,
   ExternalLink,
@@ -27,7 +23,6 @@ import {
 } from "lucide-react";
 
 import Footer from "@/components/Footer";
-import Navbar from "@/components/Navbar";
 import { Button } from "@/components/ui/button";
 import { listShortLinks } from "@/lib/api";
 import type { LinkRead } from "@/lib/types";
@@ -181,18 +176,6 @@ export default function DashboardPage() {
     return Array.from(map.entries()).map(([date, count]) => ({ date, count }));
   }, [links]);
 
-  const topLinks = useMemo(() => {
-    return [...links]
-      .sort((a, b) => (b.click_count ?? 0) - (a.click_count ?? 0))
-      .slice(0, 5)
-      .map((link) => ({
-        code: link.code,
-        shortUrl: link.short_url,
-        originalUrl: link.original_url,
-        clicks: link.click_count ?? 0,
-      }));
-  }, [links]);
-
   async function handleCopy(shortUrl: string, code: string) {
     try {
       await copyToClipboard(shortUrl);
@@ -205,8 +188,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-dvh flex flex-col bg-background text-foreground">
-      <Navbar />
-
       <main className="flex-1">
         <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-12">
           <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
@@ -317,54 +298,6 @@ export default function DashboardPage() {
                           fill="url(#fillLinks)"
                         />
                       </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-border/50 bg-background p-6 shadow-sm">
-                  <div className="mb-5 flex items-center gap-3">
-                    <div className="rounded-xl bg-primary/10 p-2 text-primary">
-                      <BarChart3 className="size-4" />
-                    </div>
-                    <div>
-                      <h2 className="text-base font-semibold tracking-tight">Top links</h2>
-                      <p className="text-sm text-muted-foreground">Your best-performing short URLs</p>
-                    </div>
-                  </div>
-
-                  <div className="h-[260px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={topLinks.map((link) => ({
-                          name: link.code,
-                          clicks: link.clicks,
-                        }))}
-                        layout="vertical"
-                        margin={{ left: 4, right: 4, top: 4, bottom: 4 }}
-                      >
-                        <CartesianGrid horizontal={true} vertical={false} stroke={borderColor} strokeOpacity={0.35} />
-                        <XAxis type="number" allowDecimals={false} tickLine={false} axisLine={false} fontSize={12} />
-                        <YAxis
-                          type="category"
-                          dataKey="name"
-                          tickLine={false}
-                          axisLine={false}
-                          width={52}
-                          fontSize={12}
-                        />
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: "14px",
-                            border: `1px solid ${borderColor}`,
-                            background: bgColor,
-                          }}
-                        />
-                        <Bar dataKey="clicks" radius={[0, 10, 10, 0]}>
-                          {topLinks.map((link) => (
-                            <Cell key={link.code} fill={primaryColor} fillOpacity={0.85} />
-                          ))}
-                        </Bar>
-                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>

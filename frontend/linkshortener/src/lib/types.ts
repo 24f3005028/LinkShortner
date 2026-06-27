@@ -6,6 +6,7 @@ export interface CreateLinkPayload {
   url: string;
   customCode?: string | null;
   expiresAt?: string | null;
+  expires_at?: string | null;
 }
 
 export interface LinkRead {

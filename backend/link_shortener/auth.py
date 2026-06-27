@@ -1,9 +1,13 @@
 from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPBearer
 
 from clerk_backend_api import AuthenticateRequestOptions, authenticate_request
 from clerk_backend_api.security.types import AuthErrorReason
 
 from link_shortener.config import Settings, get_settings
+
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def _authenticate_request(request: Request, settings: Settings):

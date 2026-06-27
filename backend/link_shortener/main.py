@@ -3,12 +3,14 @@ from datetime import datetime, timezone
 from urllib.parse import urljoin
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response, status
+from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPAuthorizationCredentials
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from link_shortener.config import get_settings
-from link_shortener.auth import get_current_user_id, get_current_user_id_optional
+from link_shortener.auth import bearer_scheme, get_current_user_id, get_current_user_id_optional
 from link_shortener.models import Link
 from link_shortener.database import get_db, init_db
 from link_shortener.schemas import LinkCreate, LinkRead, LinkStats, PaginatedLinks
@@ -36,6 +38,7 @@ app = FastAPI(
     version="1.0.0",
     description="A small FastAPI link-shortener service with PostgreSQL persistence.",
     lifespan=lifespan,
+    swagger_ui_parameters={"persistAuthorization": True},
 )
 
 settings = get_settings()
@@ -47,6 +50,35 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+    schema.setdefault("components", {}).setdefault("securitySchemes", {})["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Paste your Clerk session JWT here.",
+    }
+
+    for path_item in schema.get("paths", {}).values():
+        for operation in path_item.values():
+            if isinstance(operation, dict) and any(tag in {"links", "auth"} for tag in operation.get("tags", [])):
+                operation.setdefault("security", [{"BearerAuth": []}])
+
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = custom_openapi
 
 
 def _build_link_read(request: Request, link) -> LinkRead:
@@ -64,6 +96,23 @@ def _build_link_read(request: Request, link) -> LinkRead:
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get(
+    "/auth/me",
+    tags=["auth"],
+    summary="Validate Bearer token and return current user ID",
+    description="Pass your Clerk session JWT as Authorization: Bearer <token> to verify it before testing protected endpoints.",
+)
+def auth_me(
+    user_id: str = Depends(get_current_user_id),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict[str, str | bool | None]:
+    token_prefix = None
+    if credentials is not None and credentials.credentials:
+        token_prefix = f"{credentials.credentials[:12]}..."
+
+    return {"user_id": user_id, "authenticated": True, "token_prefix": token_prefix}
 
 
 @app.post(
@@ -145,7 +194,7 @@ def redirect_to_original(code: str, db: Session = Depends(get_db)) -> RedirectRe
     record_click(db, link)
     return RedirectResponse(
         url=link.original_url,
-        status_code=status.HTTP_301_MOVED_PERMANENTLY,
+        status_code=status.HTTP_302_FOUND,
         headers={"Cache-Control": "no-store"},
     )
 

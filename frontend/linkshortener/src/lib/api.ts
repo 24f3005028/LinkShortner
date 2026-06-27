@@ -70,13 +70,19 @@ export async function createShortLink(
   token?: string,
 ): Promise<LinkRead> {
   try {
+    const expiresAt = payload.expiresAt ?? payload.expires_at;
+    const body: Record<string, string | null> = {
+      url: payload.url,
+      custom_code: payload.customCode ?? null,
+    };
+
+    if (expiresAt !== undefined) {
+      body.expires_at = expiresAt;
+    }
+
     const response = await api.post<LinkRead>(
       "/links",
-      {
-        url: payload.url,
-        custom_code: payload.customCode ?? null,
-        expires_at: payload.expiresAt ?? null,
-      },
+      body,
       {
         headers: {
           ...buildAuthHeaders(token),
