@@ -244,7 +244,7 @@ function getForeverExpiryIso() {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function Home() {
-  const { getToken, isSignedIn } = useAuth();
+  const { isLoaded, getToken, isSignedIn } = useAuth();
   const [url, setUrl] = useState("");
   const [expiresAt, setExpiresAt] = useState<Date | null | undefined>(undefined);
   const [showExpiryPicker, setShowExpiryPicker] = useState(false);
@@ -304,6 +304,7 @@ export default function Home() {
   useEffect(() => {
     let active = true;
     async function loadRecentLinks() {
+      if (!isLoaded) return;
       if (!isSignedIn) {
         if (active) setRecentLinks([]);
         return;
@@ -318,7 +319,7 @@ export default function Home() {
     }
     loadRecentLinks();
     return () => { active = false; };
-  }, [getToken, isSignedIn]);
+  }, [isLoaded, getToken, isSignedIn]);
 
 
   // --- Shorten handler ---
