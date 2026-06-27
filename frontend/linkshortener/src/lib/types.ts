@@ -10,6 +10,7 @@ export interface CreateLinkPayload {
 }
 
 export interface LinkRead {
+  is_locked: boolean;
   code: string;
   original_url: string;
   short_url: string;
