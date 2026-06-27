@@ -7,6 +7,7 @@ export interface CreateLinkPayload {
   customCode?: string | null;
   expiresAt?: string | null;
   expires_at?: string | null;
+  password?: string | null;
 }
 
 export interface LinkRead {
@@ -25,6 +26,7 @@ export interface LinkStats {
   click_count: number;
   created_at: string;
   expires_at: string | null;
+  is_locked: boolean;
 }
 
 export interface PaginatedLinks {
@@ -32,4 +34,12 @@ export interface PaginatedLinks {
   total: number;
   page: number;
   page_size: number;
+}
+
+export interface UnlockPayload {
+  password: string;
+}
+
+export interface UnlockResponse {
+  url: string;
 }

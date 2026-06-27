@@ -6,6 +6,8 @@ import type {
   LinkRead,
   LinkStats,
   PaginatedLinks,
+  UnlockPayload,
+  UnlockResponse,
 } from "./types";
 
 // Prefer env var, fall back to local dev URL.
@@ -80,6 +82,10 @@ export async function createShortLink(
       body.expires_at = expiresAt;
     }
 
+    if (payload.password) {
+      body.password = payload.password;
+    }
+
     const response = await api.post<LinkRead>(
       "/links",
       body,
@@ -127,6 +133,27 @@ export async function getLinkStats(
     const response = await api.get<LinkStats>(`/links/${encodeURIComponent(code)}/stats`, {
       headers: buildAuthHeaders(token),
     });
+    return response.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
+}
+
+// POST /{code}/unlock
+export async function unlockLink(
+  code: string,
+  payload: UnlockPayload,
+): Promise<UnlockResponse> {
+  try {
+    const response = await api.post<UnlockResponse>(
+      `/${encodeURIComponent(code)}/unlock`,
+      payload,
+      {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
     return response.data;
   } catch (error) {
     handleAxiosError(error);

@@ -147,8 +147,20 @@ function CopyButton({ text, className = "" }: { text: string; className?: string
 }
 
 
+// --- Build the displayable URL for a result (locked links use the frontend /unlock page) ---
+function buildDisplayUrl(shortUrl: string, isLocked: boolean, code: string): string {
+  if (!isLocked) return shortUrl;
+  // Point locked links to the frontend unlock page so users see the password prompt
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/unlock/${code}`;
+  }
+  return shortUrl;
+}
+
+
 // --- Shorten result card ---
-function ShortLinkResult({ shortUrl, isLocked, onDismiss }: { shortUrl: string; isLocked: boolean; onDismiss: () => void }) {
+function ShortLinkResult({ shortUrl, isLocked, code, onDismiss }: { shortUrl: string; isLocked: boolean; code: string; onDismiss: () => void }) {
+  const displayUrl = buildDisplayUrl(shortUrl, isLocked, code);
   return (
     <div className="mt-5 w-full max-w-xl animate-in slide-in-from-bottom-1 fade-in duration-300">
       <div className="flex items-center gap-3 bg-primary/8 border border-primary/20 rounded-xl px-4 py-3">
@@ -156,22 +168,22 @@ function ShortLinkResult({ shortUrl, isLocked, onDismiss }: { shortUrl: string; 
           <p className="text-xs text-muted-foreground font-medium mb-0.5 flex items-center gap-1.5">
             Your short link
             {isLocked && (
-              <span className="inline-flex items-center gap-1 text-amber-500">
+              <span className="inline-flex items-center gap-1 text-primary">
                 <Lock className="size-3" aria-hidden />
                 Password protected
               </span>
             )}
           </p>
           <a
-            href={shortUrl}
+            href={displayUrl}
             target="_blank"
             rel="noopener noreferrer"
             className="text-primary font-mono text-sm font-semibold underline-offset-2 hover:underline truncate block"
           >
-            {shortUrl}
+            {displayUrl}
           </a>
         </div>
-        <CopyButton text={shortUrl} />
+        <CopyButton text={displayUrl} />
         <button
           onClick={onDismiss}
           aria-label="Dismiss"
@@ -252,6 +264,7 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
 
   const [shortUrl, setShortUrl] = useState<string | null>(null);
+  const [shortLinkCode, setShortLinkCode] = useState<string | null>(null);
   const [shortLinkLocked, setShortLinkLocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -367,6 +380,7 @@ export default function Home() {
       }
 
       setShortUrl(result.short_url);
+      setShortLinkCode(result.code);
       setShortLinkLocked(result.is_locked ?? false);
       addToast(
         lockEnabled ? "Password-protected link created!" : "Short link created!",
@@ -378,6 +392,7 @@ export default function Home() {
       setShowExpiryPicker(false);
       setLockEnabled(false);
       setPassword("");
+      setShowPassword(false);
     } catch (caughtError) {
       const msg = caughtError instanceof Error ? caughtError.message : "Failed to shorten URL.";
       setError(msg);
@@ -533,9 +548,9 @@ export default function Home() {
               aria-label={lockEnabled ? "Remove password lock" : "Add password lock"}
               title={lockEnabled ? "Click to remove password protection" : "Only open with a password"}
               className={[
-                "h-11 px-3 rounded-xl border text-xs font-medium transition-colors flex items-center gap-1.5 shadow-sm shrink-0",
+                "h-11 px-3 rounded-xl border text-xs font-medium transition-all duration-200 flex items-center gap-1.5 shadow-sm shrink-0",
                 lockEnabled
-                  ? "border-amber-500/50 bg-amber-500/10 text-amber-500 hover:bg-amber-500/15"
+                  ? "border-primary/40 bg-primary/10 text-primary hover:bg-primary/15"
                   : "border-input bg-background text-muted-foreground hover:bg-muted hover:text-foreground",
               ].join(" ")}
             >
@@ -576,19 +591,19 @@ export default function Home() {
             <div className="mt-2 w-full max-w-xl animate-in slide-in-from-top-1 fade-in duration-200">
               <div className="relative">
                 <Lock
-                  className="absolute left-3.5 top-1/2 -translate-y-1/2 size-3.5 text-amber-500 pointer-events-none"
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground pointer-events-none"
                   aria-hidden
                 />
                 <input
                   ref={passwordRef}
                   type={showPassword ? "text" : "password"}
-                  placeholder="Set a password for this link\u2026"
+                  placeholder="Set a password for this link…"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyDown={handleKeyDown}
                   disabled={loading}
                   aria-label="Link password"
-                  className="w-full h-10 rounded-xl border border-amber-500/30 bg-amber-500/5 pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/60 transition-shadow disabled:opacity-50"
+                  className="w-full h-10 rounded-xl border border-input bg-background pl-9 pr-10 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:border-transparent transition-shadow disabled:opacity-50 shadow-sm"
                 />
                 <button
                   type="button"
@@ -616,7 +631,8 @@ export default function Home() {
             <ShortLinkResult
               shortUrl={shortUrl}
               isLocked={shortLinkLocked}
-              onDismiss={() => { setShortUrl(null); setShortLinkLocked(false); }}
+              code={shortLinkCode ?? ""}
+              onDismiss={() => { setShortUrl(null); setShortLinkLocked(false); setShortLinkCode(null); }}
             />
           ) : null}
 
@@ -660,7 +676,7 @@ export default function Home() {
                         className="truncate font-medium text-primary hover:underline inline-flex items-center gap-1.5"
                       >
                         {link.short_url}
-                        {link.is_locked && <Lock className="size-3 text-amber-500 shrink-0" aria-label="Password protected" />}
+                              {link.is_locked && <Lock className="size-3 text-primary shrink-0" aria-label="Password protected" />}
                       </a>
                       <span className="truncate text-xs text-muted-foreground">
                         {link.original_url.length > 50
@@ -761,7 +777,7 @@ export default function Home() {
                               className="text-primary font-mono text-xs font-semibold hover:underline underline-offset-2 truncate max-w-[140px] flex items-center gap-1.5"
                             >
                               {link.short_url.replace(/^https?:\/\//, "")}
-                              {link.is_locked && <Lock className="size-3 text-amber-500 shrink-0" aria-label="Password protected" />}
+                                    {link.is_locked && <Lock className="size-3 text-primary shrink-0" aria-label="Password protected" />}
                             </a>
                           </td>
                           <td className="px-4 py-3.5 hidden sm:table-cell">
