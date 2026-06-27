@@ -17,6 +17,7 @@ import {
   Copy,
   ExternalLink,
   Link2,
+  Lock,
   MousePointerClick,
   Plus,
   TrendingUp,
@@ -25,6 +26,7 @@ import {
 import Footer from "@/components/Footer";
 import { Button } from "@/components/ui/button";
 import { listShortLinks } from "@/lib/api";
+import { buildDisplayUrl } from "@/lib/utils";
 import type { LinkRead } from "@/lib/types";
 
 function formatRelativeDate(dateString: string) {
@@ -326,7 +328,9 @@ export default function DashboardPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {links.map((link) => (
+                      {links.map((link) => {
+                        const displayUrl = buildDisplayUrl(link.short_url, link.is_locked, link.code);
+                        return (
                         <tr
                           key={link.code}
                           className="border-b border-border/40 last:border-0 hover:bg-muted/20"
@@ -334,15 +338,16 @@ export default function DashboardPage() {
                           <td className="px-3 py-4 align-top">
                             <div className="flex flex-col gap-1">
                               <a
-                                href={link.short_url}
+                                href={displayUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
                               >
                                 {link.code}
+                                {link.is_locked && <Lock className="size-3 text-primary shrink-0" aria-label="Password protected" />}
                                 <ExternalLink className="size-3.5" />
                               </a>
-                              <span className="text-xs text-muted-foreground">{truncateUrl(link.short_url, 36)}</span>
+                              <span className="text-xs text-muted-foreground">{truncateUrl(displayUrl, 36)}</span>
                             </div>
                           </td>
 
@@ -366,7 +371,7 @@ export default function DashboardPage() {
                             <div className="flex justify-end gap-2">
                               <button
                                 type="button"
-                                onClick={() => handleCopy(link.short_url, link.code)}
+                                onClick={() => handleCopy(displayUrl, link.code)}
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/30 text-muted-foreground transition-all hover:border-primary/20 hover:bg-primary/5 hover:text-foreground"
                                 aria-label="Copy short URL"
                                 title="Copy short URL"
@@ -379,7 +384,7 @@ export default function DashboardPage() {
                               </button>
 
                               <a
-                                href={link.short_url}
+                                href={displayUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border/60 bg-muted/30 text-muted-foreground transition-all hover:border-primary/20 hover:bg-primary/5 hover:text-foreground"
@@ -391,7 +396,8 @@ export default function DashboardPage() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

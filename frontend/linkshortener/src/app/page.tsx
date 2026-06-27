@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { createShortLink, listShortLinks } from "@/lib/api";
 import { deleteLocalLink, getLocalLinks, saveLocalLink } from "@/lib/localLinks";
+import { buildDisplayUrl } from "@/lib/utils";
 import type { LinkRead } from "@/lib/types";
 
 
@@ -146,16 +147,6 @@ function CopyButton({ text, className = "" }: { text: string; className?: string
   );
 }
 
-
-// --- Build the displayable URL for a result (locked links use the frontend /unlock page) ---
-function buildDisplayUrl(shortUrl: string, isLocked: boolean, code: string): string {
-  if (!isLocked) return shortUrl;
-  // Point locked links to the frontend unlock page so users see the password prompt
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/unlock/${code}`;
-  }
-  return shortUrl;
-}
 
 
 // --- Shorten result card ---
@@ -663,19 +654,21 @@ export default function Home() {
               </div>
 
               <ul className="space-y-2">
-                {recentLinks.map((link) => (
+                {recentLinks.map((link) => {
+                  const displayUrl = buildDisplayUrl(link.short_url, link.is_locked, link.code);
+                  return (
                   <li
                     key={link.code}
                     className="flex items-center justify-between gap-3 rounded-xl border border-border/50 bg-muted/20 px-4 py-3 text-sm"
                   >
                     <div className="min-w-0 flex flex-col gap-0.5">
                       <a
-                        href={link.short_url}
+                        href={displayUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="truncate font-medium text-primary hover:underline inline-flex items-center gap-1.5"
                       >
-                        {link.short_url}
+                        {displayUrl}
                               {link.is_locked && <Lock className="size-3 text-primary shrink-0" aria-label="Password protected" />}
                       </a>
                       <span className="truncate text-xs text-muted-foreground">
@@ -689,7 +682,7 @@ export default function Home() {
                       <span className="tabular-nums text-xs text-muted-foreground">{link.click_count} clicks</span>
                       <button
                         type="button"
-                        onClick={() => handleCopyRecentLink(link.short_url, link.code)}
+                        onClick={() => handleCopyRecentLink(displayUrl, link.code)}
                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
                         aria-label="Copy"
                       >
@@ -700,7 +693,7 @@ export default function Home() {
                         )}
                       </button>
                       <a
-                        href={link.short_url}
+                        href={displayUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
@@ -710,7 +703,8 @@ export default function Home() {
                       </a>
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           ) : null}
@@ -764,19 +758,21 @@ export default function Home() {
                       </tr>
                     </thead>
                     <tbody>
-                      {localLinks.map((link) => (
+                      {localLinks.map((link) => {
+                        const displayUrl = buildDisplayUrl(link.short_url, link.is_locked, link.code);
+                        return (
                         <tr
                           key={link.code}
                           className="border-b border-border/40 last:border-0 transition-colors hover:bg-muted/30"
                         >
                           <td className="px-4 py-3.5">
                             <a
-                              href={link.short_url}
+                              href={displayUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-primary font-mono text-xs font-semibold hover:underline underline-offset-2 truncate max-w-[140px] flex items-center gap-1.5"
                             >
-                              {link.short_url.replace(/^https?:\/\//, "")}
+                              {displayUrl.replace(/^https?:\/\//, "")}
                                     {link.is_locked && <Lock className="size-3 text-primary shrink-0" aria-label="Password protected" />}
                             </a>
                           </td>
@@ -792,7 +788,7 @@ export default function Home() {
                           </td>
                           <td className="px-4 py-3.5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              <CopyButton text={link.short_url} />
+                              <CopyButton text={displayUrl} />
                               <button
                                 onClick={() => handleDeleteLocalLink(link.code)}
                                 title="Remove link"
@@ -806,7 +802,8 @@ export default function Home() {
                             </div>
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     )
     short_code_length: int = 7
     max_code_generation_attempts: int = 8
+    frontend_url: str = "https://linkshortener.brewwithcrew.com"
     # Rate limits (slowapi format: "N/period", e.g. "10/minute")
     rate_limit_create: str = "10/minute"
     rate_limit_redirect: str = "60/minute"
