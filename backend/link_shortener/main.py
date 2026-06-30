@@ -166,7 +166,7 @@ def create_short_link(
         normalized = expires_at if expires_at.tzinfo else expires_at.replace(tzinfo=timezone.utc)
         if normalized <= datetime.now(timezone.utc):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="expires_at must be in the future.",
             )
     try:
